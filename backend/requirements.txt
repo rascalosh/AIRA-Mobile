@@ -1,0 +1,9 @@
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+python-multipart==0.0.32
+pydantic-settings==2.15.0
+dicom2nifti==2.6.2
+pydicom==3.0.2
+nibabel==5.4.2
+numpy==2.5.3
+Pillow==11.1.0
