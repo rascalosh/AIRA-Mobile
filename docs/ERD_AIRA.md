@@ -23,8 +23,7 @@ Dokumen ini berisi bahan untuk membuat ERD aplikasi AIRA, yaitu daftar entitas, 
 | **SEGMENTATION_JOB** | 🔶 Rencana (Fase 3) | Spesifikasi API §9 | Permintaan segmentasi ke ML API |
 | **SEGMENTATION_RESULT** | 🔶 Rencana (Fase 3–4) | `SegmentationOutput` (`clients/ml_model_client.py`), spesifikasi §9 | *Mask* hasil segmentasi |
 | **SEGMENTATION_LABEL** | 🔶 Rencana (Fase 3) | `SegmentationOutput.labels: dict[int, str]` | Label kelas pada *mask* (misalnya 1 = prostat) |
-| **FEATURE** | 🔶 Rencana opsional (Fase 5) | Spesifikasi §12 | Fitur bentuk/intensitas/tekstur |
-| **EXPORT** | 🔶 Rencana (Fase 5) | Layar Export (`mobile/lib/features/export/`) | File ekspor (PNG, laporan, mask, CSV/JSON) |
+| **EXPORT** | 🔶 Rencana (Fase 5) | Layar Export (`mobile/lib/features/export/`) | File ekspor (PNG, laporan, mask) |
 
 Jika ERD hanya ingin menggambarkan sistem yang **sudah berjalan**, cukup gunakan tiga entitas pertama (bagian 3.1).
 
@@ -37,8 +36,7 @@ Jika ERD hanya ingin menggambarkan sistem yang **sudah berjalan**, cukup gunakan
 | `study_status` | `uploaded`, `converting`, `converted`, `failed` | STUDY.status |
 | `modality` | `T2W`, `DWI`, `ADC`, `unknown` | SERIES.modality, NIFTI_FILE.modality |
 | `job_status` *(rencana)* | `submitted`, `running`, `completed`, `failed` | SEGMENTATION_JOB.status |
-| `feature_category` *(rencana)* | `shape`, `intensity`, `texture` | FEATURE.category |
-| `export_type` *(rencana)* | `overlay_png`, `report`, `mask_nifti`, `features_csv`, `features_json` | EXPORT.type |
+| `export_type` *(rencana)* | `overlay_png`, `report`, `mask_nifti` | EXPORT.type |
 
 ---
 
@@ -91,8 +89,6 @@ erDiagram
     SEGMENTATION_JOB }o--|{ NIFTI_FILE : "memakai input"
     SEGMENTATION_JOB ||--o| SEGMENTATION_RESULT : "menghasilkan"
     SEGMENTATION_RESULT ||--|{ SEGMENTATION_LABEL : "berisi"
-    SEGMENTATION_RESULT ||--o{ FEATURE : "diekstrak"
-    SEGMENTATION_LABEL ||--o{ FEATURE : "dihitung untuk"
     SEGMENTATION_RESULT ||--o{ EXPORT : "diekspor menjadi"
 
     STUDY {
@@ -145,20 +141,10 @@ erDiagram
         string label_name "mis. prostate"
     }
 
-    FEATURE {
-        string feature_id PK
-        string result_id FK
-        int label_value FK
-        enum category "shape | intensity | texture"
-        string name "mis. volume_ml"
-        float value
-        string unit "boleh null"
-    }
-
     EXPORT {
         string export_id PK
         string result_id FK
-        enum type "overlay_png | report | mask_nifti | features_csv | features_json"
+        enum type "overlay_png | report | mask_nifti"
         string file_name
         datetime created_at
     }
@@ -209,18 +195,10 @@ Enum job_status {
   failed
 }
 
-Enum feature_category {
-  shape
-  intensity
-  texture
-}
-
 Enum export_type {
   overlay_png
   report
   mask_nifti
-  features_csv
-  features_json
 }
 
 // ---------- Sudah diimplementasikan ----------
@@ -288,16 +266,6 @@ Table segmentation_label {
   }
 }
 
-Table feature {
-  feature_id varchar(32) [pk]
-  result_id varchar(32) [not null, ref: > segmentation_result.result_id]
-  label_value int [not null]
-  category feature_category [not null]
-  name varchar [not null]
-  value float [not null]
-  unit varchar [null]
-}
-
 Table export {
   export_id varchar(32) [pk]
   result_id varchar(32) [not null, ref: > segmentation_result.result_id]
@@ -305,8 +273,6 @@ Table export {
   file_name varchar [not null]
   created_at timestamp [not null]
 }
-
-Ref: feature.(result_id, label_value) > segmentation_label.(result_id, label_value)
 ```
 
 ---
@@ -384,19 +350,7 @@ Ref: feature.(result_id, label_value) > segmentation_label.(result_id, label_val
 | label_value | int | PK | Nilai voxel pada *mask* (0 = latar belakang) |
 | label_name | varchar | | Nama struktur, misalnya `prostate` |
 
-### 5.8 FEATURE 🔶 (opsional)
-
-| Atribut | Tipe | Kunci | Null | Keterangan |
-|---|---|---|---|---|
-| feature_id | varchar(32) | PK | Tidak | |
-| result_id | varchar(32) | FK → SEGMENTATION_RESULT | Tidak | |
-| label_value | int | FK → SEGMENTATION_LABEL | Tidak | Area (ROI) tempat fitur dihitung |
-| category | enum `feature_category` | | Tidak | `shape` / `intensity` / `texture` |
-| name | varchar | | Tidak | Nama fitur, misalnya `volume_ml` |
-| value | float | | Tidak | Nilai fitur |
-| unit | varchar | | Ya | Satuan |
-
-### 5.9 EXPORT 🔶
+### 5.8 EXPORT 🔶
 
 | Atribut | Tipe | Kunci | Null | Keterangan |
 |---|---|---|---|---|
@@ -419,9 +373,7 @@ Ref: feature.(result_id, label_value) > segmentation_label.(result_id, label_val
 | 5 | SEGMENTATION_JOB — **memakai input** — NIFTI_FILE 🔶 | M : N (melalui JOB_INPUT) | Satu job memakai satu atau lebih volume. |
 | 6 | SEGMENTATION_JOB — **menghasilkan** — SEGMENTATION_RESULT 🔶 | 1 : 0..1 | Job yang gagal tidak menghasilkan hasil. |
 | 7 | SEGMENTATION_RESULT — **berisi** — SEGMENTATION_LABEL 🔶 | 1 : 1..N | Setiap *mask* punya minimal satu label. |
-| 8 | SEGMENTATION_RESULT — **diekstrak** — FEATURE 🔶 | 1 : 0..N | Fitur bersifat opsional. |
-| 9 | SEGMENTATION_LABEL — **dihitung untuk** — FEATURE 🔶 | 1 : 0..N | Setiap fitur dihitung pada satu label/ROI. |
-| 10 | SEGMENTATION_RESULT — **diekspor menjadi** — EXPORT 🔶 | 1 : 0..N | Satu hasil bisa diekspor ke beberapa format. |
+| 8 | SEGMENTATION_RESULT — **diekspor menjadi** — EXPORT 🔶 | 1 : 0..N | Satu hasil bisa diekspor ke beberapa format. |
 
 ### Aturan bisnis yang mempengaruhi relasi
 
@@ -451,12 +403,12 @@ Jika ERD harus memakai notasi Chen (entitas = persegi panjang, relasi = belah ke
    0..1
    │
 [SEGMENTATION_RESULT] ──1──< berisi >──N── [SEGMENTATION_LABEL]
-   │            │                                   │
-   1            1                                   1
-< diekspor >  < diekstrak >──N── [FEATURE] ──N──< dihitung untuk >
+   │
+   1
+< diekspor >
    N
    │
 [EXPORT]
 ```
 
-Atribut kunci (PK) digarisbawahi pada elips: `study_id`, `series_id`, `resource_id`, `job_id`, `result_id`, `feature_id`, `export_id`. SEGMENTATION_LABEL adalah **entitas lemah** dengan kunci parsial `label_value` yang bergantung pada SEGMENTATION_RESULT.
+Atribut kunci (PK) digarisbawahi pada elips: `study_id`, `series_id`, `resource_id`, `job_id`, `result_id`, `export_id`. SEGMENTATION_LABEL adalah **entitas lemah** dengan kunci parsial `label_value` yang bergantung pada SEGMENTATION_RESULT.
