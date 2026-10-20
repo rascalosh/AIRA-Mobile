@@ -38,9 +38,9 @@ class _DetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context).textTheme;
-    final missing = isMissingT2w(study);
-    final canSegment = study.isConverted && !missing;
-    final present = {for (final m in study.modalities) m.apiValue}.toList();
+    final missing = missingForModel(study);
+    final canRun = canSegment(study);
+    final segmented = study.segmentation != null;
 
     return Column(
       children: [
@@ -54,13 +54,14 @@ class _DetailBody extends StatelessWidget {
             ),
             children: [
               _SummaryCard(study: study),
-              if (missing) ...[
+              if (missing.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.s3),
                 InlineAlert(
                   tone: AlertTone.warning,
                   title: 'Missing modality',
-                  message: 'The model needs T2W. This study only contains '
-                      '${present.isEmpty ? 'no recognised series' : present.join(' and ')}.',
+                  message:
+                      'The model needs ${modelInputs.map((m) => m.apiValue).join(', ')}. '
+                      'This study is missing ${missing.map((m) => m.apiValue).join(' and ')}.',
                 ),
               ],
               const SizedBox(height: AppSpacing.md),
@@ -68,7 +69,9 @@ class _DetailBody extends StatelessWidget {
                 label: 'Open MRI Viewer',
                 icon: LucideIcons.layers,
                 variant: AiraButtonVariant.secondary,
-                onPressed: study.isConverted ? () => context.push(Routes.viewer(study.studyId)) : null,
+                onPressed: study.isConverted
+                    ? () => context.push(Routes.viewer(study.studyId))
+                    : null,
               ),
               const SizedBox(height: AppSpacing.lg),
               const SectionTitle('Modalities'),
@@ -83,20 +86,36 @@ class _DetailBody extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.sm, AppSpacing.screenH, AppSpacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenH,
+            AppSpacing.sm,
+            AppSpacing.screenH,
+            AppSpacing.md,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AiraButton(
-                label: 'Run AI Segmentation',
-                icon: LucideIcons.sparkles,
-                onPressed: canSegment ? () => context.push(Routes.segmentation(study.studyId)) : null,
-              ),
-              if (!canSegment)
+              if (segmented)
+                AiraButton(
+                  label: 'View results',
+                  icon: LucideIcons.layers,
+                  onPressed: () => context.push(Routes.results(study.studyId)),
+                )
+              else
+                AiraButton(
+                  label: 'Run AI Segmentation',
+                  icon: LucideIcons.sparkles,
+                  onPressed: canRun
+                      ? () => context.push(Routes.segmentation(study.studyId))
+                      : null,
+                ),
+              if (!segmented && !canRun)
                 Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.sm),
                   child: Text(
-                    missing ? 'Add a T2W series to enable segmentation.' : 'Available once the study is converted.',
+                    missing.isNotEmpty
+                        ? 'Add the missing sequences to enable segmentation.'
+                        : 'Available once the study is converted.',
                     style: theme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
@@ -120,7 +139,9 @@ class _SummaryCard extends StatelessWidget {
     final theme = Theme.of(context).textTheme;
     final date = formatDate(study.createdAt);
     final slices = sliceCount(study);
-    final seriesCount = study.series.isNotEmpty ? study.series.length : study.niftiFiles.length;
+    final seriesCount = study.series.isNotEmpty
+        ? study.series.length
+        : study.niftiFiles.length;
     final converted = study.isConverted;
 
     return AppSurface(
@@ -138,14 +159,25 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Row(
             children: [
-              Expanded(child: _Metric(label: 'Series', value: '$seriesCount')),
-              Expanded(child: _Metric(label: 'Slices', value: slices > 0 ? '$slices' : '–')),
-              const Expanded(child: _Metric(label: 'Plane', value: 'Axial')),
+              Expanded(
+                child: _Metric(label: 'Series', value: '$seriesCount'),
+              ),
+              Expanded(
+                child: _Metric(
+                  label: 'Slices',
+                  value: slices > 0 ? '$slices' : '–',
+                ),
+              ),
+              const Expanded(
+                child: _Metric(label: 'Plane', value: 'Axial'),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
           Semantics(
-            label: converted ? 'Upload and conversion complete, segmentation pending' : 'Conversion pending',
+            label: converted
+                ? 'Upload and conversion complete, segmentation pending'
+                : 'Conversion pending',
             excludeSemantics: true,
             child: Row(
               children: [
@@ -155,7 +187,12 @@ class _SummaryCard extends StatelessWidget {
                     child: Container(
                       height: 4,
                       decoration: BoxDecoration(
-                        color: i == 0 || (i == 1 && converted) ? c.primary : c.infoBg,
+                        color:
+                            i == 0 ||
+                                (i == 1 && converted) ||
+                                (i == 2 && study.segmentation != null)
+                            ? c.primary
+                            : c.infoBg,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -166,7 +203,9 @@ class _SummaryCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            converted
+            study.segmentation != null
+                ? 'Segmentation complete. Review the result before use.'
+                : converted
                 ? 'Upload and conversion complete. Next step: segmentation.'
                 : 'Uploaded. Conversion has not finished yet.',
             style: theme.bodySmall,
@@ -218,10 +257,15 @@ class _ModalityRow extends StatelessWidget {
         statusLabel: 'Not found',
       );
     }
-    final slices = volume != null && volume.shape.length >= 3 ? volume.shape[2] : null;
+    final slices = volume != null && volume.shape.length >= 3
+        ? volume.shape[2]
+        : null;
     return CategoryRow(
       title: modality.apiValue,
-      subtitle: [modality.label, if (slices != null) '$slices slices'].join(' · '),
+      subtitle: [
+        modality.label,
+        if (slices != null) '$slices slices',
+      ].join(' · '),
       status: volume != null ? ChipStatus.converted : ChipStatus.processing,
       statusLabel: volume != null ? null : 'Pending',
     );

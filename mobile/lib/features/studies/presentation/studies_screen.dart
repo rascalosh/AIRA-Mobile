@@ -9,6 +9,7 @@ import '../../../core/design_system/design_system.dart';
 import '../../../data/models/study.dart';
 import '../application/study_providers.dart';
 import 'open_study.dart';
+import 'studies_status.dart';
 import 'study_format.dart';
 
 enum _StudyFilter { all, ready, needsAction }
@@ -34,7 +35,7 @@ class _StudiesScreenState extends ConsumerState<StudiesScreen> {
   bool _matches(Study s) {
     final filterOk = switch (_filter) {
       _StudyFilter.all => true,
-      _StudyFilter.ready => chipStatusFor(s) == ChipStatus.ready,
+      _StudyFilter.ready => isReady(s),
       _StudyFilter.needsAction => needsAction(s),
     };
     return filterOk && s.studyId.toLowerCase().contains(_query.toLowerCase());
@@ -42,7 +43,8 @@ class _StudiesScreenState extends ConsumerState<StudiesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final all = ref.watch(recentStudiesProvider);
+    final loaded = ref.watch(recentStudiesProvider);
+    final all = loaded.value ?? const <Study>[];
     final studies = all.where(_matches).toList();
     final theme = Theme.of(context).textTheme;
 
@@ -97,29 +99,39 @@ class _StudiesScreenState extends ConsumerState<StudiesScreen> {
             ),
           ),
           Expanded(
-            child: studies.isEmpty
+            child: !loaded.hasValue
+                ? SingleChildScrollView(
+                    child: StudiesLoadState(error: loaded.error),
+                  )
+                : studies.isEmpty
                 ? _Empty(hasAny: all.isNotEmpty, query: _query)
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.screenH,
-                      AppSpacing.sm,
-                      AppSpacing.screenH,
-                      AppSpacing.lg,
+                : RefreshIndicator(
+                    onRefresh: () => ref.refresh(recentStudiesProvider.future),
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.screenH,
+                        AppSpacing.sm,
+                        AppSpacing.screenH,
+                        AppSpacing.lg,
+                      ),
+                      itemCount: studies.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: AppSpacing.s3),
+                      itemBuilder: (context, i) {
+                        final s = studies[i];
+                        return StudyRow(
+                          title: studyLabel(s),
+                          lines: [
+                            if (formatDate(s.createdAt) != null)
+                              formatDate(s.createdAt)!,
+                            modalitiesText(s),
+                          ],
+                          status: chipStatusFor(s),
+                          onTap: () => context.push(Routes.study(s.studyId)),
+                        );
+                      },
                     ),
-                    itemCount: studies.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.s3),
-                    itemBuilder: (context, i) {
-                      final s = studies[i];
-                      return StudyRow(
-                        title: studyLabel(s),
-                        lines: [
-                          if (formatDate(s.createdAt) != null) formatDate(s.createdAt)!,
-                          modalitiesText(s),
-                        ],
-                        status: chipStatusFor(s),
-                        onTap: () => context.push(Routes.study(s.studyId)),
-                      );
-                    },
                   ),
           ),
         ],
@@ -140,7 +152,7 @@ class _Empty extends ConsumerWidget {
       return EmptyState(
         icon: LucideIcons.scanLine,
         title: 'No studies yet',
-        message: 'Studies you add or open appear here for this session.',
+        message: 'Studies you add appear here.',
         action: AiraButton(
           label: 'Add study',
           icon: LucideIcons.plus,

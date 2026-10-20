@@ -31,3 +31,11 @@ mobile/.flutter-plugins-dependencies
 mobile/android/.gradle/
 mobile/android/local.properties
 mobile/ios/Pods/
+
+# ML weights (model artefact, not source)
+backend/models/*.pth
+
+# Android release signing
+mobile/android/key.properties
+*.jks
+*.keystore

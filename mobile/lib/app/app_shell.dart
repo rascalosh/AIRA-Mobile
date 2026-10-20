@@ -25,7 +25,10 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: AiraBottomNav(
         items: _items,
         currentIndex: navigationShell.currentIndex,
-        onTap: (i) => navigationShell.goBranch(i, initialLocation: i == navigationShell.currentIndex),
+        onTap: (i) => navigationShell.goBranch(
+          i,
+          initialLocation: i == navigationShell.currentIndex,
+        ),
       ),
     );
   }

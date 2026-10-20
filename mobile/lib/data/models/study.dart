@@ -75,6 +75,38 @@ class NiftiFile {
       );
 }
 
+/// Result of running the segmentation model on a study (mask lives on the T2W grid).
+class SegmentationInfo {
+  const SegmentationInfo({
+    required this.resourceId,
+    required this.label,
+    required this.volumeMl,
+    required this.modelName,
+    required this.modelNote,
+    this.slicesWithMask = const [],
+  });
+
+  final String resourceId;
+  final String label;
+  final double volumeMl;
+  final String modelName;
+
+  /// Accuracy caveat supplied by the server; always shown next to the result.
+  final String modelNote;
+
+  /// 0-based axial slices that contain mask.
+  final List<int> slicesWithMask;
+
+  factory SegmentationInfo.fromJson(Map<String, dynamic> json) => SegmentationInfo(
+        resourceId: json['resource_id'] as String,
+        label: json['label'] as String,
+        volumeMl: (json['volume_ml'] as num).toDouble(),
+        modelName: json['model_name'] as String,
+        modelNote: json['model_note'] as String,
+        slicesWithMask: [for (final i in (json['slices_with_mask'] as List?) ?? const []) (i as num).toInt()],
+      );
+}
+
 class Study {
   const Study({
     required this.studyId,
@@ -84,6 +116,7 @@ class Study {
     this.niftiFiles = const [],
     this.skippedFiles = 0,
     this.createdAt,
+    this.segmentation,
   });
 
   final String studyId;
@@ -93,6 +126,7 @@ class Study {
   final List<NiftiFile> niftiFiles;
   final int skippedFiles;
   final DateTime? createdAt;
+  final SegmentationInfo? segmentation;
 
   bool get isConverted => status == StudyStatus.converted;
 
@@ -111,6 +145,9 @@ class Study {
         ],
         skippedFiles: (json['skipped_files'] as num?)?.toInt() ?? 0,
         createdAt: json['created_at'] == null ? null : DateTime.tryParse(json['created_at'] as String),
+        segmentation: json['segmentation'] == null
+            ? null
+            : SegmentationInfo.fromJson(json['segmentation'] as Map<String, dynamic>),
       );
 
   /// Merges a partial response (e.g. convert) into the known study.
@@ -119,6 +156,7 @@ class Study {
     List<MriModality>? modalities,
     List<SeriesInfo>? series,
     List<NiftiFile>? niftiFiles,
+    SegmentationInfo? segmentation,
   }) =>
       Study(
         studyId: studyId,
@@ -128,5 +166,6 @@ class Study {
         niftiFiles: niftiFiles ?? this.niftiFiles,
         skippedFiles: skippedFiles,
         createdAt: createdAt,
+        segmentation: segmentation ?? this.segmentation,
       );
 }

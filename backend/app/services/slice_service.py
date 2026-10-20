@@ -13,12 +13,13 @@ from pathlib import Path
 import nibabel as nib
 import numpy as np
 from PIL import Image
+from scipy.ndimage import binary_erosion
 
 from app.core import errors
 
 logger = logging.getLogger(__name__)
 
-_MAX_CACHE_ENTRIES = 8
+_MAX_CACHE_ENTRIES = 4
 
 
 class _VolumeCache:
@@ -64,7 +65,7 @@ def _load_volume(resource_id: str, path: Path) -> tuple[np.ndarray, float, float
     if cached is not None:
         return cached
 
-    data = nib.load(str(path)).get_fdata()
+    data = nib.load(str(path)).get_fdata(dtype=np.float32)  # float32: half the memory of the default
     if data.ndim not in (3, 4):
         raise errors.unsupported_volume()
 
@@ -91,7 +92,7 @@ def slice_count(resource_id: str, path: Path) -> int:
     return int(data.shape[2])
 
 
-def render_slice_png(resource_id: str, path: Path, index: int, max_dim: int = 512) -> bytes:
+def render_slice_png(resource_id: str, path: Path, index: int, max_dim: int | None = 512) -> bytes:
     data, low, high = _load_volume(resource_id, path)
 
     if index < 0 or index >= data.shape[2]:
@@ -115,12 +116,88 @@ def render_slice_png(resource_id: str, path: Path, index: int, max_dim: int = 51
         normalized = ((clipped - low) / span * 255).astype(np.uint8)
 
     image = Image.fromarray(normalized, mode="L")
-    if max(image.size) > max_dim:
+    if max_dim and max(image.size) > max_dim:
         image.thumbnail((max_dim, max_dim), Image.LANCZOS)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def render_mask_overlay_png(path: Path, index: int, max_dim: int = 512) -> bytes:
+    """A mask slice as RGBA: 40% cyan fill with a solid outline, transparent elsewhere.
+
+    Uses the same orientation and downscaling as `render_slice_png`, so the two PNGs line up.
+    """
+    mask = np.asarray(nib.load(str(path)).dataobj)
+    if index < 0 or index >= mask.shape[2]:
+        raise errors.invalid_slice_index()
+
+    plane = np.flipud(mask[:, :, index].T) > 0
+    edge = plane & ~binary_erosion(plane)
+    rgba = np.zeros((*plane.shape, 4), dtype=np.uint8)
+    rgba[plane] = (34, 211, 238, 102)
+    rgba[edge] = (34, 211, 238, 255)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+    if max(image.size) > max_dim:
+        image.thumbnail((max_dim, max_dim), Image.NEAREST)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+# -- editing: label slices -----------------------------------------------------------------
+# A slice travels as an image (rows = Y flipped, columns = X). `plane_to_image` and `image_to_plane` are exact
+# inverses, and the MRI slice and the label slice both use them, so the two always line up pixel for pixel.
+
+_MAX_LABEL_PIXELS = 4096 * 4096
+
+
+def plane_to_image(plane: np.ndarray) -> np.ndarray:
+    return np.flipud(plane.T)
+
+
+def image_to_plane(image: np.ndarray) -> np.ndarray:
+    return np.flipud(image).T
+
+
+def label_array_to_png(image: np.ndarray) -> bytes:
+    buffer = io.BytesIO()
+    Image.fromarray(image.astype(np.uint8), mode="L").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def render_label_png(path: Path, index: int) -> bytes:
+    """One mask slice as a lossless 8-bit PNG at native size; the pixel value is the label (0 = background)."""
+    mask = np.asarray(nib.load(str(path)).dataobj)
+    if index < 0 or index >= mask.shape[2]:
+        raise errors.invalid_slice_index()
+    return label_array_to_png(plane_to_image(mask[:, :, index].astype(np.uint8)))
+
+
+def decode_label_png(data: bytes) -> np.ndarray:
+    """An uploaded label PNG as a 2D uint8 array in image orientation. Gray or RGB(A) PNGs are accepted (the red
+    channel is the label: an opaque gray image has R = G = B)."""
+    try:
+        image = Image.open(io.BytesIO(data))
+        if image.format != "PNG" or image.width * image.height > _MAX_LABEL_PIXELS:
+            raise ValueError("not a usable PNG")
+        if image.mode not in ("L", "RGB", "RGBA"):
+            raise ValueError("unsupported PNG mode")
+        image.load()
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise errors.invalid_mask_slice("A mask slice could not be read. Please try again.") from exc
+    return np.asarray(image if image.mode == "L" else image.getchannel("R"), dtype=np.uint8)
+
+
+def image_plane(resource_id: str, path: Path, index: int) -> np.ndarray:
+    """The raw intensities of one slice in the same orientation as the PNGs (for refinement)."""
+    data, _, _ = _load_volume(resource_id, path)
+    if index < 0 or index >= data.shape[2]:
+        raise errors.invalid_slice_index()
+    plane = data[:, :, index, 0] if data.ndim == 4 else data[:, :, index]
+    return plane_to_image(plane)
 
 
 def discard_cache(resource_id: str) -> None:

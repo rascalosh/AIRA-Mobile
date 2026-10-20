@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../models/job.dart';
 import '../models/study.dart';
 
 final studyRepositoryProvider = Provider<StudyRepository>(
@@ -54,8 +55,29 @@ class StudyRepository {
   Future<Study> convertStudy(String studyId) async =>
       Study.fromJson(await _api.postJson('/api/v1/studies/$studyId/convert'));
 
+  /// The caller's studies on the server, newest first.
+  Future<List<Study>> listStudies() async {
+    final items = await _api.getList('/api/v1/studies');
+    return [for (final item in items) Study.fromJson(item as Map<String, dynamic>)];
+  }
+
   Future<Study> getStudy(String studyId) async =>
       Study.fromJson(await _api.getJson('/api/v1/studies/$studyId'));
+
+  /// Queues the segmentation model on the server (needs T2W, ADC and DWI) and returns at once.
+  /// Asking again while it runs returns the same job.
+  Future<SegmentationJob> startSegmentation(String studyId) async =>
+      SegmentationJob.fromJson(await _api.postJson('/api/v1/studies/$studyId/segment'));
+
+  Future<SegmentationJob> getJob(String jobId) async =>
+      SegmentationJob.fromJson(await _api.getJson('/api/v1/jobs/$jobId'));
+
+  /// Transparent PNG of one mask slice, the same size as the matching T2W slice PNG.
+  Future<Uint8List> getOverlay(String resourceId, int index) =>
+      _api.getBytes('/api/v1/resources/$resourceId/overlay/$index');
+
+  /// Erases this user's studies, masks and files on the server, and the account.
+  Future<void> deleteAllMyData() => _api.delete('/api/v1/users/me');
 
   Future<void> deleteStudy(String studyId) => _api.delete('/api/v1/studies/$studyId');
 

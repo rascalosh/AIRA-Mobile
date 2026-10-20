@@ -10,7 +10,11 @@ import '../application/study_providers.dart';
 /// Asks for a Study ID, fetches it from the backend, remembers it for this
 /// session and opens its detail screen. [prefill] seeds the field (used when a
 /// search finds no local match).
-Future<void> openStudyById(BuildContext context, WidgetRef ref, {String? prefill}) async {
+Future<void> openStudyById(
+  BuildContext context,
+  WidgetRef ref, {
+  String? prefill,
+}) async {
   final studyId = await showDialog<String>(
     context: context,
     builder: (context) => _OpenStudyDialog(initial: prefill),
@@ -23,7 +27,9 @@ Future<void> openStudyById(BuildContext context, WidgetRef ref, {String? prefill
     if (context.mounted) context.push(Routes.study(study.studyId));
   } on ApiException catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }
@@ -63,7 +69,10 @@ class _OpenStudyDialogState extends State<_OpenStudyDialog> {
         onSubmitted: (v) => Navigator.pop(context, v.trim()),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         TextButton(
           onPressed: () => Navigator.pop(context, _controller.text.trim()),
           child: const Text('Open'),

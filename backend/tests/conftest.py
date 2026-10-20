@@ -1,6 +1,7 @@
 """Test fixtures. All DICOM data is synthetic and contains no patient information."""
 
 import io
+import os
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,6 +13,8 @@ from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, MRImageStorage, generate_uid
 
 from app.core.config import Settings
+from app.db.models import Base
+from app.db.session import Database
 from app.main import create_app
 
 
@@ -80,13 +83,37 @@ def as_upload(paths: list[Path]) -> list[tuple[str, tuple[str, bytes, str]]]:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(storage_dir=tmp_path / "storage", required_modalities=["T2W"], _env_file=None)
+    """SQLite by default. Set TEST_DATABASE_URL (e.g. mysql+pymysql://user:pw@127.0.0.1:3306/aira_test) to run
+    the suite against MySQL; that database is wiped before every test, so never point it at real data."""
+    url = os.environ.get("TEST_DATABASE_URL")
+    if url:
+        db = Database(url)
+        Base.metadata.drop_all(db.engine)
+        db.engine.dispose()
+    return Settings(storage_dir=tmp_path / "storage", required_modalities=["T2W"], database_url=url, _env_file=None)
+
+
+def register(test_client: TestClient) -> str:
+    """Register an anonymous user and make the client send its bearer token. Returns the user id."""
+    body = test_client.post("/api/v1/users/anonymous").json()
+    test_client.headers["Authorization"] = f"Bearer {body['token']}"
+    return body["user_id"]
 
 
 @pytest.fixture
 def client(settings: Settings) -> Iterator[TestClient]:
+    """A client registered as one anonymous user."""
     with TestClient(create_app(settings)) as test_client:
+        register(test_client)
         yield test_client
+
+
+@pytest.fixture
+def other_client(client: TestClient) -> TestClient:
+    """A second user talking to the same app."""
+    other = TestClient(client.app)
+    register(other)
+    return other
 
 
 @pytest.fixture

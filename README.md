@@ -38,7 +38,7 @@ if (-not (Test-Path .venv)) { python -m venv .venv }   # create once; don't re-r
 If you need to recreate or upgrade the venv, stop the running server first (Ctrl+C). Windows can't
 replace `.venv\Scripts\python.exe` while uvicorn is using it (`Permission denied`).
 
-Interactive API docs: http://localhost:8000/docs. Configuration: copy `.env.example` to `.env`.
+Interactive API docs (off by default; set `DOCS_ENABLED=true`): http://localhost:8000/docs. Configuration: copy `.env.example` to `.env`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -122,6 +122,92 @@ app/
    caught too and only their exception *type* is logged, never their message (which could contain
    a file path or DICOM header value), and the client gets a generic 500.
 
+### Segmentation model (`app/ml/`, `app/clients/local_model_client.py`)
+
+`POST /api/v1/studies/{id}/segment` runs a PyTorch model **on the server**; the phone only calls the endpoint.
+The bundled model is a 3D multi-branch Dense U-Net (T2W branch + ADC/DWI branch) trained on PI-CAI lesion
+masks. It needs **T2W, ADC and DWI**, and its validation Dice is only about 0.2, so every result carries an
+"experimental" note (`MODEL_NOTE`) that the app shows next to the mask.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `MODEL_PATH` | `models/prostate_segmentation.pth` | `state_dict` weights. Not in git; place the file here. |
+| `MODEL_NAME`, `MODEL_NOTE` | see `core/config.py` | Name and accuracy caveat returned with each result. |
+
+- **Upload formats:** DICOM (files or a `.zip`), or NIfTI (`.nii`/`.nii.gz`, also inside a `.zip`). A NIfTI file does not
+  say what it is, so the file name decides: `_t2w`, `_adc`, and `_hbv` or `_dwi` (for example
+  `case_t2w_preprocessed.nii.gz`). Mask files (`mask`, `seg`) and unrecognised names are skipped; a NIfTI study skips the
+  DICOM conversion step and needs at least T2W. For best agreement with the training notebook use NIfTI files that are
+  already pre-processed the same way.
+- **Install:** `pip install torch --index-url https://download.pytorch.org/whl/cpu`, then `pip install -r requirements.txt`.
+- **Replace the model:** same architecture, point `MODEL_PATH` at the new weights. A different architecture needs
+  its own class beside `prostate_denseunet.py` and a change to `LocalTorchClient._load`.
+- **Inputs match the training notebook:** no intensity normalisation, T2W resized to 256x256x32, ADC/DWI to
+  88x88x32 (ADC first). The notebook trained on pre-processed PI-CAI data, so raw DICOM only approximates it.
+  Array orientation (LPS index order) is an assumption to confirm on real data.
+
+### Database, users and jobs (`app/db/`, `app/services/{storage,users,jobs}.py`)
+
+Study metadata lives in **MySQL**; image and mask files stay on disk under `STORAGE_DIR`.
+
+| Table | Holds |
+|---|---|
+| `users` | Anonymous device users. Only a SHA-256 hash of the bearer token is stored. |
+| `studies`, `series`, `nifti_files` | Study state and the converted volumes (the old `study.json`). |
+| `mask_versions` | Segmentation masks: the read-only `ai` version now, corrected versions later (`base_version_id`, `edited_slices`, `created_by`). |
+| `jobs` | Segmentation jobs: `queued` → `running` → `completed`/`failed`, with the error and the result mask. |
+
+- **Run with MySQL:** `cp .env.example .env`, set both passwords, put the weights in `backend/models/`, then
+  `docker compose up --build`. The API creates the tables at startup (there are no migrations yet: add Alembic
+  before the first schema change on data you want to keep).
+- **Without Docker:** set `DATABASE_URL=mysql+pymysql://user:password@host:3306/aira`. When it is unset the API
+  uses a SQLite file in `STORAGE_DIR`, which is also what the tests use.
+- **Users:** the app calls `POST /api/v1/users/anonymous` once, keeps the token in the device keystore and sends
+  it as `Authorization: Bearer ...`. Every study, resource and job is scoped to its owner; someone else's id is a 404.
+- **Jobs:** `POST /studies/{id}/segment` returns `202` with a job id; poll `GET /jobs/{id}`. One job runs at a time
+  on an in-process worker, so run a single API process. Jobs interrupted by a restart are marked failed.
+- **Cleanup:** studies untouched for `STUDY_TTL_HOURS` are deleted (rows and files), except those with a running job.
+
+### Mask versions, editing and refinement (`app/api/masks.py`, `app/services/{mask_version,refine}_service.py`)
+
+The AI mask is stored as a read-only version and is never overwritten. A user's correction is saved as a *new*
+version (`Corrected v1`, `v2`, ...), made from a copy of the base with the edited slices replaced, using the base's
+affine and header. Every mask lives on the T2W array grid, and the MRI slice and the label slice use the same
+transform, so they line up pixel for pixel.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/studies/{id}/mask/versions` | Versions with `name`, labels, volume, edited/refined slices, `slices_with_mask`. |
+| `GET /api/v1/masks/{version_id}/slices/{z}` | One mask slice as a lossless 8-bit label PNG at native size (pixel = label). |
+| `GET /api/v1/resources/{t2w_id}/slices/{z}?full=true` | The MRI slice at native size (no downscale), for editing. |
+| `POST /api/v1/studies/{id}/mask/versions` | Save edited slices (`base_version_id`, files `slice_008.png`, optional `refined_slices`). **409 `VERSION_CONFLICT`** unless the base is the latest version. |
+| `POST /api/v1/studies/{id}/mask/refine` | A *proposal* that fits a rough edit to the image edge (random walker in a band + cleanup). Stateless: nothing is stored. 5 s timeout. |
+| `GET /api/v1/studies/{id}/mask/compare?a=&b=` | Dice, IoU, volumes (mL), changed voxels. |
+
+Refinement only changes pixels in the neighbourhood of the edit (the changed pixels grown by twice the band width), never
+overwrites other labels, and returns an unchanged edit as it is. `REFINE_ENABLED_METHODS` and `REFINE_TIMEOUT_SECONDS`
+configure it. Studies, versions and files are removed together by the usual retention cleanup.
+
+Refinement denoises the patch (total variation) before the random walk and uses a high edge sensitivity (`beta` 800). Both were
+tuned on synthetic scenes with a known boundary (varied noise, blur, contrast, shape and edit roughness) and checked on held-out
+scenes: mean Dice gain +0.07 against +0.03 for the plain walker, and 2% of edits made worse instead of 15%. That is evidence about
+the algorithm, not about real lesions: validate on ground-truth masks before relying on it (the deferred M7 benchmark).
+
+### Annotation module: decisions
+
+- **Routes are study-based** (`/studies/{id}/mask/...`), not `result_id`-based: a mask version belongs to a study.
+- **No schema change.** Corrections reuse `mask_versions` (`source=manual_correction`, `base_version_id`, `read_only`).
+  The AI version is never written; a test checks its file hash and row after saves.
+- **No reorientation.** The mask is stored on the T2W array grid and both PNGs use the same transform
+  (`flipud(plane.T)`), so MRI and mask align by construction (tested).
+- **Stale base = 409.** A save must name the latest version as its base; the app then offers to reload.
+- **Refinement is random walker only**, in a band around the edit. The other methods in the plan are for the
+  deferred benchmark (M7) and are not shipped. "Keep largest component" is off: lesions can be small and multiple.
+- **Edits live in memory** until saved (not kept if the app is killed). History is capped at 50 steps per slice.
+- **Input:** 1 finger draws in Edit mode and 2 fingers pan/zoom; once a stylus is seen, the stylus draws and fingers navigate.
+- **Not done:** the offline refinement benchmark (needs ground truth), picking a version when exporting, and drawing
+  frame-rate numbers (checked by hand on the emulator only). Measured on case 10008: refine round trip about 70 ms.
+
 ### DICOM → NIfTI conversion (`app/services/nifti_service.py`)
 
 1. **Upload** (`POST /studies/upload`) first expands any `.zip` archives among the uploaded files
@@ -186,3 +272,32 @@ lib/
 
 Use de-identified test data during development (e.g. public prostate MRI collections such as
 PROSTATEx on TCIA). ML API credentials live only in the backend environment, never in the app.
+
+## Security
+
+What is in place, and what you must still do before a public deployment.
+
+**Backend**
+- Every study, resource, mask version and job is scoped to its owner (another user's id gives 404). Ids are random 128-bit values.
+- Bearer tokens are 256 random bits; only a SHA-256 hash is stored. `DELETE /api/v1/users/me` erases a user's studies, files and account.
+- Abuse limits (`.env.example`): registration is rate limited per client address; upload, segmentation, save and refine per user;
+  a cap on studies per user, active segmentations per user, files per upload, zip members and decoded volume size.
+- Uploads are streamed with a byte budget; client file names and zip paths never reach the disk as paths; PNG and NIfTI
+  headers are checked before voxels are read. Model weights load with `weights_only=True`.
+- Responses carry `Cache-Control: no-store`, `X-Content-Type-Options`, `X-Frame-Options`. CORS and `/docs` are off by default.
+- Errors never include paths or DICOM values; logs hold no patient data. Dependencies are pinned and `pip-audit` runs in CI.
+- Docker: non-root, read-only filesystem, no capabilities, no new privileges, health check, MySQL not published, API on
+  `127.0.0.1` unless `API_BIND` says otherwise.
+
+**App**
+- The token is kept in the Keystore/Keychain (`flutter_secure_storage`). Release builds refuse a non-`https://` `API_BASE_URL`,
+  block screenshots and the recent-apps preview (`FLAG_SECURE`), and disable Android backups. Settings has *Delete all my data*.
+- Release signing reads `mobile/android/key.properties` (git-ignored); without it the release is signed with the debug key.
+
+**Still your job before going public**
+- Put the API behind HTTPS (a reverse proxy such as Caddy or nginx); this service speaks plain HTTP. Set uvicorn `--proxy-headers`
+  and a trusted-proxy list so the registration limit sees real client addresses.
+- Registration is anonymous. If abuse matters, add device attestation (Play Integrity / App Attest) or real accounts.
+- The rate limiter and job queue are per process: run one API process, or move both to Redis and a task queue.
+- Tokens do not expire. Add expiry/rotation if the threat model needs it.
+- Use de-identified data only; add audit logging, retention policy and a privacy review if real patient data is ever used.

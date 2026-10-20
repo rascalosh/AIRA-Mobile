@@ -6,4 +6,12 @@ dicom2nifti==2.6.2
 pydicom==3.0.2
 nibabel==5.4.2
 numpy==2.5.3
-Pillow==11.1.0
+Pillow==13.0.0
+
+# ML inference. torch is the CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1
+scipy==1.18.1
+scikit-image==0.26.0
+SQLAlchemy==2.1.1
+PyMySQL==1.2.3
+cryptography==50.0.2  # PyMySQL needs it for MySQL 8 authentication

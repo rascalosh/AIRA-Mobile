@@ -8,8 +8,18 @@ void main() {
       'status': 'uploaded',
       'modalities': ['T2W', 'ADC'],
       'series': [
-        {'series_id': 's1', 'modality': 'T2W', 'num_instances': 24, 'description': 't2_tse_tra'},
-        {'series_id': 's2', 'modality': 'unknown', 'num_instances': 10, 'description': null},
+        {
+          'series_id': 's1',
+          'modality': 'T2W',
+          'num_instances': 24,
+          'description': 't2_tse_tra',
+        },
+        {
+          'series_id': 's2',
+          'modality': 'unknown',
+          'num_instances': 10,
+          'description': null,
+        },
       ],
       'skipped_files': 2,
     });
@@ -23,7 +33,11 @@ void main() {
   });
 
   test('parses a convert response and merges it', () {
-    const uploaded = Study(studyId: 'abc123', status: StudyStatus.uploaded, modalities: [MriModality.t2w]);
+    const uploaded = Study(
+      studyId: 'abc123',
+      status: StudyStatus.uploaded,
+      modalities: [MriModality.t2w],
+    );
     final converted = Study.fromJson({
       'study_id': 'abc123',
       'status': 'converted',
@@ -38,7 +52,10 @@ void main() {
       ],
     });
 
-    final merged = uploaded.copyWith(status: converted.status, niftiFiles: converted.niftiFiles);
+    final merged = uploaded.copyWith(
+      status: converted.status,
+      niftiFiles: converted.niftiFiles,
+    );
     expect(merged.isConverted, isTrue);
     expect(merged.modalities, [MriModality.t2w]);
     expect(merged.niftiFiles.single.shape, [320, 320, 24]);

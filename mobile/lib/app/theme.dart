@@ -207,7 +207,8 @@ class SegColors {
 }
 
 extension AiraTheme on BuildContext {
-  AiraColors get aira => Theme.of(this).extension<AiraColors>() ?? AiraColors.standard;
+  AiraColors get aira =>
+      Theme.of(this).extension<AiraColors>() ?? AiraColors.standard;
 }
 
 double lerpSpacing(double a, double b, double t) => lerpDouble(a, b, t)!;
@@ -258,10 +259,12 @@ class AppTheme {
   static ThemeData? _standard;
   static ThemeData? _reading;
 
-  static ThemeData standard() => _standard ??= _build(AiraColors.standard, Brightness.light);
+  static ThemeData standard() =>
+      _standard ??= _build(AiraColors.standard, Brightness.light);
 
   /// Reading mode: dark chrome for the viewer and result screens.
-  static ThemeData reading() => _reading ??= _build(AiraColors.reading, Brightness.dark);
+  static ThemeData reading() =>
+      _reading ??= _build(AiraColors.reading, Brightness.dark);
 
   static ThemeData _build(AiraColors c, Brightness brightness) {
     final textTheme = _textTheme(c);
@@ -279,7 +282,9 @@ class AppTheme {
       outlineVariant: c.border,
     );
 
-    final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md));
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(AppRadius.md),
+    );
     const buttonSize = Size.fromHeight(48);
 
     return ThemeData(
@@ -301,7 +306,11 @@ class AppTheme {
         titleTextStyle: textTheme.titleLarge,
         iconTheme: IconThemeData(color: c.textTitle),
       ),
-      dividerTheme: DividerThemeData(color: c.border, thickness: 1, space: AppSpacing.md),
+      dividerTheme: DividerThemeData(
+        color: c.border,
+        thickness: 1,
+        space: AppSpacing.md,
+      ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: c.primary,
@@ -341,17 +350,25 @@ class AppTheme {
       ),
       sliderTheme: SliderThemeData(
         activeTrackColor: c.primary,
-        inactiveTrackColor: brightness == Brightness.dark ? c.border : Indigo.c100,
+        inactiveTrackColor: brightness == Brightness.dark
+            ? c.border
+            : Indigo.c100,
         thumbColor: c.primary,
         overlayColor: c.primary.withValues(alpha: 0.14),
         valueIndicatorColor: c.primary,
-        valueIndicatorTextStyle: textTheme.labelMedium?.copyWith(color: c.onPrimary),
+        valueIndicatorTextStyle: textTheme.labelMedium?.copyWith(
+          color: c.onPrimary,
+        ),
         trackHeight: 3,
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.all(c.onPrimary == Colors.white ? Colors.white : c.textTitle),
+        thumbColor: WidgetStateProperty.all(
+          c.onPrimary == Colors.white ? Colors.white : c.textTitle,
+        ),
         trackColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? c.primary : c.surfaceMuted,
+          (states) => states.contains(WidgetState.selected)
+              ? c.primary
+              : c.surfaceMuted,
         ),
         trackOutlineColor: WidgetStateProperty.all(c.border),
       ),
@@ -372,7 +389,9 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: c.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         titleTextStyle: textTheme.titleLarge,
         contentTextStyle: textTheme.bodyMedium,
       ),
@@ -392,14 +411,19 @@ class AppTheme {
           borderRadius: BorderRadius.circular(AppRadius.md),
           borderSide: BorderSide(color: c.focus, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.s3),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.s3,
+        ),
         labelStyle: textTheme.bodyMedium?.copyWith(color: c.textSecondary),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: c.textTitle,
         contentTextStyle: textTheme.bodyMedium?.copyWith(color: c.background),
         actionTextColor: c.primary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
         behavior: SnackBarBehavior.floating,
       ),
     );

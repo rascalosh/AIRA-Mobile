@@ -23,6 +23,7 @@ class StudyScaffold extends ConsumerWidget {
     this.subtitle,
     this.reading = false,
     this.actionsBuilder,
+    this.onBack,
   });
 
   final String studyId;
@@ -31,9 +32,14 @@ class StudyScaffold extends ConsumerWidget {
   /// Second header line. Defaults to the study label when null.
   final String? subtitle;
   final bool reading;
+
   /// Header actions; only called once the study has loaded.
-  final List<Widget> Function(BuildContext context, Study study)? actionsBuilder;
+  final List<Widget> Function(BuildContext context, Study study)?
+  actionsBuilder;
   final Widget Function(BuildContext context, Study study) builder;
+
+  /// Replaces the default back behaviour (e.g. to ask before leaving unsaved edits).
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,8 +52,11 @@ class StudyScaffold extends ConsumerWidget {
         builder: (context) {
           final textTheme = Theme.of(context).textTheme;
           return AnnotatedRegion<SystemUiOverlayStyle>(
-            value: (reading ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
-                .copyWith(statusBarColor: Colors.transparent),
+            value:
+                (reading
+                        ? SystemUiOverlayStyle.light
+                        : SystemUiOverlayStyle.dark)
+                    .copyWith(statusBarColor: Colors.transparent),
             child: Scaffold(
               appBar: AppBar(
                 automaticallyImplyLeading: false,
@@ -57,14 +66,23 @@ class StudyScaffold extends ConsumerWidget {
                   child: AiraIconButton(
                     icon: LucideIcons.arrowLeft,
                     label: 'Back',
-                    onPressed: () => context.canPop() ? context.pop() : context.go(Routes.home),
+                    onPressed:
+                        onBack ??
+                        () => context.canPop()
+                            ? context.pop()
+                            : context.go(Routes.home),
                   ),
                 ),
                 titleSpacing: 0,
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: textTheme.titleMedium?.copyWith(color: context.aira.textTitle)),
+                    Text(
+                      title,
+                      style: textTheme.titleMedium?.copyWith(
+                        color: context.aira.textTitle,
+                      ),
+                    ),
                     Text(
                       subtitle ??
                           switch (study) {
@@ -85,9 +103,9 @@ class StudyScaffold extends ConsumerWidget {
                 child: switch (study) {
                   AsyncData(:final value) => builder(context, value),
                   AsyncError(:final error) => ErrorView(
-                      message: error.toString(),
-                      onRetry: () => ref.invalidate(studyProvider(studyId)),
-                    ),
+                    message: error.toString(),
+                    onRetry: () => ref.invalidate(studyProvider(studyId)),
+                  ),
                   _ => const LoadingView(message: 'Loading study…'),
                 },
               ),

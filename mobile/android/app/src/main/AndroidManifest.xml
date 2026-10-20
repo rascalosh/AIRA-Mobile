@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The login token and cached state must not leave the device through backups. -->
     <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:label="aira_mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

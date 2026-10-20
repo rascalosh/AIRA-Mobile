@@ -5,6 +5,7 @@ under a server-generated name, which also rules out path traversal.
 """
 
 import logging
+import re
 import shutil
 import zipfile
 from collections.abc import Iterable
@@ -40,12 +41,21 @@ class _ByteBudget:
             raise errors.upload_too_large(self.limit // (1024 * 1024))
 
 
+def _safe_name(name: str | None) -> str:
+    """The last part of an uploaded file name, reduced to safe characters.
+
+    Kept on disk (after a random id) because NIfTI files carry their modality in the name. It is never
+    logged, and the upload directory is deleted after the upload is processed.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "_", Path(name or "").name)[-64:]
+
+
 async def save_uploads(files: list[UploadFile], dest: Path, max_bytes: int) -> list[Path]:
     """Stream uploaded files to `dest`, enforcing a total size limit."""
     budget = _ByteBudget(max_bytes)
     saved: list[Path] = []
     for upload in files:
-        path = dest / new_id()
+        path = dest / f"{new_id()}_{_safe_name(upload.filename)}"
         with path.open("wb") as out:
             while chunk := await upload.read(_CHUNK):
                 budget.consume(len(chunk))
@@ -55,7 +65,7 @@ async def save_uploads(files: list[UploadFile], dest: Path, max_bytes: int) -> l
     return saved
 
 
-def expand_archives(paths: list[Path], dest: Path, max_bytes: int) -> list[Path]:
+def expand_archives(paths: list[Path], dest: Path, max_bytes: int, max_members: int = 10000) -> list[Path]:
     """Replace any zip archives in `paths` with their extracted members."""
     budget = _ByteBudget(max_bytes)
     result: list[Path] = []
@@ -65,11 +75,14 @@ def expand_archives(paths: list[Path], dest: Path, max_bytes: int) -> list[Path]
             continue
         try:
             with zipfile.ZipFile(path) as archive:
-                for member in archive.infolist():
+                members = archive.infolist()
+                if len(members) > max_members:
+                    raise errors.upload_too_large(max_bytes // (1024 * 1024))
+                for member in members:
                     if member.is_dir():
                         continue
                     budget.consume(member.file_size)
-                    target = dest / new_id()
+                    target = dest / f"{new_id()}_{_safe_name(member.filename)}"
                     with archive.open(member) as src, target.open("wb") as out:
                         shutil.copyfileobj(src, out, _CHUNK)
                     result.append(target)

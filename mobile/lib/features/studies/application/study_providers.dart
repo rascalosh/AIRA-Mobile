@@ -8,18 +8,22 @@ final studyProvider = FutureProvider.autoDispose.family<Study, String>(
   (ref, studyId) => ref.watch(studyRepositoryProvider).getStudy(studyId),
 );
 
-/// Studies opened in this app session (kept in memory only — no patient data is persisted).
-class RecentStudies extends Notifier<List<Study>> {
+/// The user's studies, loaded from the server (newest first) so they survive an app restart.
+/// `upsert` updates the list in place after an upload, segmentation or open-by-ID.
+class RecentStudies extends AsyncNotifier<List<Study>> {
   @override
-  List<Study> build() => const [];
+  Future<List<Study>> build() =>
+      ref.watch(studyRepositoryProvider).listStudies();
 
   void upsert(Study study) {
-    state = [study, ...state.where((s) => s.studyId != study.studyId)].take(20).toList();
-  }
-
-  void remove(String studyId) {
-    state = state.where((s) => s.studyId != studyId).toList();
+    final current = state.value ?? const <Study>[];
+    state = AsyncData([
+      study,
+      ...current.where((s) => s.studyId != study.studyId),
+    ]);
   }
 }
 
-final recentStudiesProvider = NotifierProvider<RecentStudies, List<Study>>(RecentStudies.new);
+final recentStudiesProvider = AsyncNotifierProvider<RecentStudies, List<Study>>(
+  RecentStudies.new,
+);

@@ -49,7 +49,12 @@ class ViewerScreen extends StatelessWidget {
         final theme = Theme.of(context).textTheme;
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.screenH, 0, AppSpacing.screenH, AppSpacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenH,
+              0,
+              AppSpacing.screenH,
+              AppSpacing.md,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,8 +66,19 @@ class ViewerScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: AppSpacing.s3),
                     child: Row(
                       children: [
-                        SizedBox(width: 56, child: Text(n.modality.apiValue, style: theme.titleSmall)),
-                        Expanded(child: Text(n.shape.join(' × '), style: theme.bodyMedium)),
+                        SizedBox(
+                          width: 56,
+                          child: Text(
+                            n.modality.apiValue,
+                            style: theme.titleSmall,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            n.shape.join(' × '),
+                            style: theme.bodyMedium,
+                          ),
+                        ),
                         Text(
                           '${n.voxelSpacing.map((v) => v.toStringAsFixed(2)).join(' × ')} mm',
                           style: theme.bodySmall,
@@ -71,7 +87,10 @@ class ViewerScreen extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: AppSpacing.xs),
-                Text('Pinch to zoom, drag to pan, double-tap to zoom in or reset.', style: theme.bodySmall),
+                Text(
+                  'Pinch to zoom, drag to pan, double-tap to zoom in or reset.',
+                  style: theme.bodySmall,
+                ),
                 const SizedBox(height: AppSpacing.md),
                 const DisclaimerBanner(),
               ],
@@ -108,7 +127,8 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
   }
 
   /// Slices along the last spatial axis (axial after dicom2nifti reorientation).
-  int get _sliceCount => (_volume?.shape.length ?? 0) >= 3 ? _volume!.shape[2] : 1;
+  int get _sliceCount =>
+      (_volume?.shape.length ?? 0) >= 3 ? _volume!.shape[2] : 1;
 
   double get _zoom => _transform.value.getMaxScaleOnAxis();
 
@@ -152,7 +172,13 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     if (resourceId == null) return;
     for (final neighbor in [_slice - 1, _slice + 1]) {
       if (neighbor >= 0 && neighbor < _sliceCount) {
-        ref.read(sliceProvider(SliceRequest(resourceId: resourceId, index: neighbor)).future).ignore();
+        ref
+            .read(
+              sliceProvider(
+                SliceRequest(resourceId: resourceId, index: neighbor),
+              ).future,
+            )
+            .ignore();
       }
     }
   }
@@ -179,7 +205,8 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
         child: PlaceholderPanel(
           icon: LucideIcons.hourglass,
           title: 'Study not converted',
-          subtitle: 'Finish uploading and converting the study before viewing it.',
+          subtitle:
+              'Finish uploading and converting the study before viewing it.',
         ),
       );
     }
@@ -214,7 +241,10 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                           child: Center(
                             child: AspectRatio(
                               aspectRatio: 1,
-                              child: NiftiSliceView(resourceId: volume.resourceId, index: _slice),
+                              child: NiftiSliceView(
+                                resourceId: volume.resourceId,
+                                index: _slice,
+                              ),
                             ),
                           ),
                         ),
@@ -222,7 +252,9 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                       Positioned(
                         left: AppSpacing.md,
                         top: AppSpacing.sm,
-                        child: _ViewportLabel('Slice ${_slice + 1} / $_sliceCount'),
+                        child: _ViewportLabel(
+                          'Slice ${_slice + 1} / $_sliceCount',
+                        ),
                       ),
                       Positioned(
                         right: AppSpacing.md,
@@ -234,7 +266,9 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                         bottom: AppSpacing.sm,
                         child: ListenableBuilder(
                           listenable: _transform,
-                          builder: (context, _) => _ViewportLabel('Zoom ${_zoom.toStringAsFixed(1)}×'),
+                          builder: (context, _) => _ViewportLabel(
+                            'Zoom ${_zoom.toStringAsFixed(1)}×',
+                          ),
                         ),
                       ),
                       Positioned(
@@ -243,7 +277,10 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                         child: ListenableBuilder(
                           listenable: _transform,
                           builder: (context, _) => AnimatedOpacity(
-                            duration: motionDuration(context, const Duration(milliseconds: 160)),
+                            duration: motionDuration(
+                              context,
+                              const Duration(milliseconds: 160),
+                            ),
                             opacity: _zoom > 1.01 ? 1 : 0,
                             child: IgnorePointer(
                               ignoring: _zoom <= 1.01,
@@ -251,7 +288,8 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                                 icon: LucideIcons.rotateCcw,
                                 label: 'Reset zoom',
                                 filled: true,
-                                onPressed: () => _transform.value = Matrix4.identity(),
+                                onPressed: () =>
+                                    _transform.value = Matrix4.identity(),
                               ),
                             ),
                           ),
@@ -263,14 +301,22 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
         ),
         Container(
           color: c.background,
-          padding: const EdgeInsets.fromLTRB(AppSpacing.screenH, AppSpacing.md, AppSpacing.screenH, AppSpacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenH,
+            AppSpacing.md,
+            AppSpacing.screenH,
+            AppSpacing.md,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AiraSegmentedControl<MriModality>(
                 value: _modality,
                 onChanged: _select,
-                disabled: {for (final m in modalities) if (!available.contains(m)) m},
+                disabled: {
+                  for (final m in modalities)
+                    if (!available.contains(m)) m,
+                },
                 options: [for (final m in modalities) (m, m.apiValue)],
               ),
               const SizedBox(height: AppSpacing.s3),
@@ -290,7 +336,9 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                       min: 0,
                       max: (_sliceCount - 1).clamp(1, 1 << 20).toDouble(),
                       divisions: _sliceCount > 1 ? _sliceCount - 1 : null,
-                      onChanged: _sliceCount > 1 ? (v) => _setSlice(v.round()) : null,
+                      onChanged: _sliceCount > 1
+                          ? (v) => _setSlice(v.round())
+                          : null,
                     ),
                   ),
                   AiraIconButton(
@@ -300,12 +348,16 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                   ),
                 ],
               ),
-              const SizedBox(height: AppSpacing.sm),
-              AiraButton(
-                label: 'Run AI Segmentation',
-                icon: LucideIcons.sparkles,
-                onPressed: () => context.push(Routes.segmentation(widget.study.studyId)),
-              ),
+              // Once the AI segmentation has run there is nothing left to start here: Results shows it.
+              if (widget.study.segmentation == null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                AiraButton(
+                  label: 'Run AI Segmentation',
+                  icon: LucideIcons.sparkles,
+                  onPressed: () =>
+                      context.push(Routes.segmentation(widget.study.studyId)),
+                ),
+              ],
             ],
           ),
         ),
@@ -322,12 +374,20 @@ class _ViewportLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
-      child: Text(text, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: context.aira.textPrimary)),
+      child: Text(
+        text,
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: context.aira.textPrimary),
+      ),
     );
   }
 }

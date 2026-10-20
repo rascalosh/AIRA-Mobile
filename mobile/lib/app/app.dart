@@ -11,7 +11,9 @@ class AiraApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      value: SystemUiOverlayStyle.dark.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
       child: MaterialApp.router(
         title: 'AIRA',
         debugShowCheckedModeBanner: false,

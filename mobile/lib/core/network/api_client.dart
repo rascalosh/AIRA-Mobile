@@ -5,18 +5,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_config.dart';
 import 'api_exception.dart';
+import 'auth.dart';
 
-final dioProvider = Provider<Dio>((ref) {
-  final dio = Dio(
-    BaseOptions(
+final tokenStoreProvider = Provider<TokenStore>((ref) => SecureTokenStore());
+
+BaseOptions _baseOptions() => BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: AppConfig.connectTimeout,
       receiveTimeout: AppConfig.receiveTimeout,
       sendTimeout: AppConfig.sendTimeout,
       responseType: ResponseType.json,
-    ),
-  );
-  ref.onDispose(dio.close);
+    );
+
+final dioProvider = Provider<Dio>((ref) {
+  final plain = Dio(_baseOptions());
+  final dio = Dio(_baseOptions())
+    ..interceptors.add(AuthInterceptor(store: ref.watch(tokenStoreProvider), plain: plain));
+  ref.onDispose(() {
+    dio.close();
+    plain.close();
+  });
   return dio;
 });
 
@@ -30,6 +38,15 @@ class ApiClient {
 
   Future<Map<String, dynamic>> getJson(String path) =>
       _json(() => _dio.get<Map<String, dynamic>>(path));
+
+  Future<List<dynamic>> getList(String path) async {
+    try {
+      final response = await _dio.get<List<dynamic>>(path);
+      return response.data ?? const [];
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
 
   Future<Map<String, dynamic>> postJson(String path, {Object? data}) =>
       _json(() => _dio.post<Map<String, dynamic>>(path, data: data));

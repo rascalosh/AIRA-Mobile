@@ -10,11 +10,14 @@ logger = logging.getLogger(__name__)
 class AppError(Exception):
     """An error whose message is safe to show to the end user."""
 
-    def __init__(self, code: str, message: str, status_code: int = 400) -> None:
+    def __init__(
+        self, code: str, message: str, status_code: int = 400, headers: dict[str, str] | None = None
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
+        self.headers = headers
 
 
 def invalid_dicom() -> AppError:
@@ -57,6 +60,14 @@ def conversion_failed() -> AppError:
     )
 
 
+def invalid_image() -> AppError:
+    return AppError(
+        "INVALID_IMAGE",
+        "One of the selected NIfTI files could not be read. Please check that the file is complete.",
+        400,
+    )
+
+
 def upload_too_large(limit_mb: int) -> AppError:
     return AppError("UPLOAD_TOO_LARGE", f"The upload exceeds the {limit_mb} MB limit.", 413)
 
@@ -77,6 +88,59 @@ def unsupported_volume() -> AppError:
     return AppError("UNSUPPORTED_VOLUME", "This NIfTI volume cannot be displayed.", 422)
 
 
+def unauthorized() -> AppError:
+    return AppError("UNAUTHORIZED", "Authentication is required. Please restart the app and try again.", 401)
+
+
+def job_not_found() -> AppError:
+    return AppError("JOB_NOT_FOUND", "The requested job was not found.", 404)
+
+
+def version_conflict() -> AppError:
+    return AppError(
+        "VERSION_CONFLICT",
+        "This mask has newer changes. Reload it before saving, so nothing is overwritten.",
+        409,
+    )
+
+
+def invalid_mask_slice(message: str) -> AppError:
+    return AppError("INVALID_MASK_SLICE", message, 422)
+
+
+def refine_timeout() -> AppError:
+    return AppError("REFINE_TIMEOUT", "Refinement took too long. Your edit is unchanged.", 504)
+
+
+def refine_failed() -> AppError:
+    return AppError("REFINE_FAILED", "Refinement could not be completed. Your edit is unchanged.", 422)
+
+
+def model_unavailable() -> AppError:
+    return AppError("MODEL_UNAVAILABLE", "The segmentation model is not available on the server.", 503)
+
+
+def segmentation_failed() -> AppError:
+    return AppError(
+        "SEGMENTATION_FAILED",
+        "Segmentation could not be completed for this study. Please try again or use another study.",
+        422,
+    )
+
+
+def too_many_requests(retry_after: int) -> AppError:
+    return AppError(
+        "TOO_MANY_REQUESTS",
+        "Too many requests. Please wait a moment and try again.",
+        429,
+        {"Retry-After": str(retry_after)},
+    )
+
+
+def quota_exceeded(message: str) -> AppError:
+    return AppError("QUOTA_EXCEEDED", message, 429)
+
+
 def invalid_state(message: str) -> AppError:
     return AppError("INVALID_STATE", message, 409)
 
@@ -88,7 +152,9 @@ def _error_body(code: str, message: str) -> dict:
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status_code, content=_error_body(exc.code, exc.message))
+        return JSONResponse(
+            status_code=exc.status_code, content=_error_body(exc.code, exc.message), headers=exc.headers
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:

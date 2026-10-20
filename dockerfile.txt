@@ -1,0 +1,4 @@
+FROM ubuntu:latest
+WORDIR /app
+COPY . .
+RUN apt-get update && apt-get install -y curl

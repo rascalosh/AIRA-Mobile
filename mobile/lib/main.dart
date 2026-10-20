@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'app/app.dart';
+import 'core/config/app_config.dart';
 import 'app/theme.dart';
 
 void main() {
+  AppConfig.assertSecure();
+
   // Failsafe: replace Flutter's default red "crash" screen with a calm,
   // on-brand message wherever a widget fails to build, instead of a wall of
   // stack-trace text — this is a clinical app, and raw errors are neither
@@ -22,7 +25,9 @@ void main() {
   // assertion during a frame callback, an unhandled async error) so it's
   // logged rather than silently terminating the isolate.
   PlatformDispatcher.instance.onError = (error, stack) {
-    FlutterError.reportError(FlutterErrorDetails(exception: error, stack: stack));
+    FlutterError.reportError(
+      FlutterErrorDetails(exception: error, stack: stack),
+    );
     return true;
   };
 
@@ -48,14 +53,24 @@ class _CrashFailsafe extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           Text(
             'Something went wrong',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.textTitle, decoration: TextDecoration.none),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: c.textTitle,
+              decoration: TextDecoration.none,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
             'This screen ran into a problem. Go back and try again. '
             'Nothing on the server is affected.',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: c.textSecondary, decoration: TextDecoration.none),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              color: c.textSecondary,
+              decoration: TextDecoration.none,
+            ),
             textAlign: TextAlign.center,
           ),
         ],

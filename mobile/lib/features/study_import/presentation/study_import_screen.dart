@@ -142,7 +142,8 @@ class _PickerCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Select every DICOM file of one study (T2W, DWI, ADC), or a .zip of the study folder.',
+              'Select every DICOM file of one study (T2W, DWI, ADC), or NIfTI files named _t2w, _adc and _hbv. '
+              'A .zip of either also works.',
               style: theme.bodyMedium?.copyWith(color: c.textSecondary),
               textAlign: TextAlign.center,
             ),
