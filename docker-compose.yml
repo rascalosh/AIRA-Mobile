@@ -1,0 +1,55 @@
+# MySQL + the FastAPI backend.
+#   cp .env.example .env   # then set the two passwords
+#   docker compose up --build
+# The model weights are not in the image: put prostate_segmentation.pth in backend/models/ (mounted read-only).
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: aira
+      MYSQL_USER: aira
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # The password goes into a URL: use letters and digits only, or percent-encode it.
+      DATABASE_URL: mysql+pymysql://aira:${MYSQL_PASSWORD}@db:3306/aira
+      STORAGE_DIR: /data/storage
+      DOCS_ENABLED: ${DOCS_ENABLED:-false}
+    volumes:
+      - api_data:/data
+      - ./backend/models:/srv/models:ro
+    # Hardening: no root-writable image, no extra privileges, bounded process count.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    # Loopback only by default (the emulator reaches it as 10.0.2.2). For a phone on Wi-Fi set API_BIND=0.0.0.0
+    # and put HTTPS in front of it: this service speaks plain HTTP.
+    ports:
+      - "${API_BIND:-127.0.0.1}:8000:8000"
+
+volumes:
+  db_data:
+  api_data:
